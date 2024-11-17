@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.model_selection import train_test_split, RandomizedSearchCV
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.impute import SimpleImputer
@@ -140,13 +142,22 @@ def create_feature_engineering(df):
     df['price'] = df['price'].str.replace('$', '').str.replace(',', '').astype(float)
     
     # Create revenue features
-    df['minimum_monthly_revenue'] = df['minimum_nights'] * df['price'] * 30
-    df['maximum_monthly_revenue'] = df['maximum_nights'] * df['price'] * 30
+    df['minimum_monthly_revenue'] = df['minimum_nights'] * df['price']
+    df['maximum_monthly_revenue'] = df.apply(
+        lambda row: (row['maximum_nights'] / 30) * row['price'] 
+        if row['maximum_nights'] > 30 
+        else row['maximum_nights'] * row['price'],
+        axis=1
+    )
     
     # Create availability ratios
-    for days in [30, 60, 90, 365]:
+    availability_days = [30, 60, 90, 365]
+    for days in availability_days:
+        # Compute availability ratio
         df[f'availability_ratio_{days}'] = df[f'availability_{days}'] / days
-        df[f'monthly_revenue_{days}'] = df[f'availability_ratio_{days}'] * df['price'] * 30
+        # Compute monthly revenue
+        factor = 30 if days != 30 else 1
+        df[f'monthly_revenue_{days}'] = df[f'availability_ratio_{days}'] * df['price'] * factor
     
     return df
 
@@ -337,7 +348,53 @@ def evaluate_models_and_create_submissions(models, X_train, y_train, X_test, tes
     
     return results, best_params
 
-def main():
+def analyze_xgboost_feature_importance(model, X_train):
+    """
+    Analyze and print feature importance from XGBoost, adjusted for transformed feature names.
+    """
+    print("\nAnalyzing XGBoost feature importance...")
+    
+    # If the model is inside a Pipeline, get the actual model (XGBRegressor or XGBClassifier)
+    if hasattr(model, 'named_steps'):
+        model = model.named_steps['regressor']  # Change 'regressor' to the name you used in your pipeline
+    
+    if hasattr(model, 'feature_importances_'):
+        importances = model.feature_importances_
+        
+        # Handle transformed feature names
+        if hasattr(model, 'get_booster'):
+            feature_names = X_train.columns  # If no transformation, use original column names
+        else:
+            # If using a pipeline with preprocessing (e.g., OneHotEncoder or ColumnTransformer), extract feature names
+            feature_names = X_train.columns.tolist()
+
+            if hasattr(model, 'named_steps'):
+                preprocessor = model.named_steps.get('preprocessor', None)
+                if preprocessor:
+                    # Extract feature names from transformers like OneHotEncoder or ColumnTransformer
+                    try:
+                        # If a ColumnTransformer is used, get the feature names after encoding
+                        feature_names = preprocessor.get_feature_names_out()
+                    except AttributeError:
+                        pass  # If no feature names could be extracted, fallback to the original ones
+        
+        # Ensure the length of feature names matches the importances
+        if len(importances) == len(feature_names):
+            importance_df = pd.DataFrame({
+                'Feature': feature_names,
+                'Importance': importances
+            }).sort_values(by='Importance', ascending=False)
+
+            print("\nTop 10 Important Features:")
+            print(importance_df.head(10))
+        else:
+            print(f"Feature names length ({len(feature_names)}) does not match importances length ({len(importances)})")
+    else:
+        print("Feature importances are not available for this model.")
+
+
+
+def main(selected_model=None):
     # Load data
     train_df, test_df = load_and_preprocess_data('input/train.csv', 'input/test.csv')
     
@@ -361,6 +418,7 @@ def main():
     train_df, numerical_features, categorical_features = prepare_features(train_df)
     test_df, _, _ = prepare_features(test_df)
     
+    train_df.to_csv('preprocessed.csv')
     # Split features and target
     X_train = train_df.drop('monthly_revenue', axis=1)
     y_train = train_df['monthly_revenue']
@@ -368,6 +426,14 @@ def main():
     
     print("Creating model pipelines with RandomizedSearchCV...")
     models = create_model_pipeline(numerical_features, categorical_features)
+    
+    # Filter for the selected model
+    if selected_model:
+        if isinstance(selected_model, list):  # If multiple models are provided
+            models = {name: model for name, model in models.items() if name in selected_model}
+        else:
+            models = {selected_model: models[selected_model]}
+
     
     # Evaluate models and create submissions
     results, best_params = evaluate_models_and_create_submissions(
@@ -384,6 +450,10 @@ def main():
         print("\nBest Parameters:")
         for param, value in best_params[model_name].items():
             print(f"{param}: {value}")
+    
+    if 'XGBoost' in models:
+        analyze_xgboost_feature_importance(models['XGBoost'].best_estimator_, X_train)
+
 
 if __name__ == "__main__":
-    main()
+    main("XGBoost")
