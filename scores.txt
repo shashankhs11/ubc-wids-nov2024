@@ -47,3 +47,17 @@ Train RMSE: 1083.3462
 Train MSE: 1173639.0444
 Train R2: 0.3408
 Best CV Score: 1122.3973
+
+XGBoost:
+Train RMSE: 1084.5934
+Train MSE: 1176342.9071
+Train R2: 0.3393
+Best CV Score: 1122.1193
+
+
+regressor__colsample_bytree: 0.6661067756252009
+regressor__learning_rate: 0.01469092202235818
+regressor__max_depth: 3
+regressor__min_child_weight: 1
+regressor__n_estimators: 235
+regressor__subsample: 0.602208846849441
