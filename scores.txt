@@ -1,0 +1,49 @@
+XGBoost:
+Train RMSE: 1083.1874
+Validation RMSE: 1087.1213
+Train R2: 0.3551
+Validation R2: 0.2722
+Best CV Score: 1134.1616
+
+XGBoost:
+Train RMSE: 1005.2362
+Validation RMSE: 1102.4501
+Train R2: 0.4446
+Validation R2: 0.2515
+Best CV Score: 1136.9646
+
+XGBoost:
+Train RMSE: 1083.2277
+Validation RMSE: 1087.1832
+Train R2: 0.3551
+Validation R2: 0.2721
+Best CV Score: 1133.9760
+
+
+XGBoost:
+Train RMSE: 1085.4182
+Train R2: 0.3383
+Best CV Score: 1122.7342
+
+XGBoost:
+Train RMSE: 1084.9129
+Train MSE: 1177035.9699
+Train R2: 0.3389
+Best CV Score: 1123.2155
+
+Train RMSE: 1085.3107
+Train MSE: 1177899.3079
+Train R2: 0.3385
+Best CV Score: 1122.9594
+
+
+XGBoost:
+Train RMSE: 1085.3107
+Train MSE: 1177899.3079
+Train R2: 0.3385
+Best CV Score: 1122.6255
+
+Train RMSE: 1083.3462
+Train MSE: 1173639.0444
+Train R2: 0.3408
+Best CV Score: 1122.3973

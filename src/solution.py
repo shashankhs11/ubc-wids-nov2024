@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup
 from sklearn.feature_extraction.text import TfidfVectorizer
 from scipy.stats import randint, uniform
 import warnings
+from haversine import haversine
 warnings.filterwarnings('ignore')
 
 def load_and_preprocess_data(train_path, test_path):
@@ -149,7 +150,8 @@ def create_feature_engineering(df):
         else row['maximum_nights'] * row['price'],
         axis=1
     )
-    
+    df['revenue_per_booking'] = df['accommodates'] * df['price']
+
     # Create availability ratios
     availability_days = [30, 60, 90, 365]
     for days in availability_days:
@@ -158,12 +160,19 @@ def create_feature_engineering(df):
         # Compute monthly revenue
         factor = 30 if days != 30 else 1
         df[f'monthly_revenue_{days}'] = df[f'availability_ratio_{days}'] * df['price'] * factor
+
+    # Define a central point (e.g., city center)
+    central_point = (49.2789, -123.1195)  # Example: Downtown, Vancouver, BC 
+
+    # Calculate distance for each row
+    df['distance_from_center'] = df.apply(lambda row: haversine((row['latitude'], row['longitude']), central_point), axis=1)
+
     
     return df
 
 def prepare_features(df):
     # Columns to drop
-    cols_to_drop = ['host_id', 'host_name', 'neighbourhood', 'latitude', 'longitude', 
+    cols_to_drop = ['host_id', 'host_name', 'neighbourhood', 'longitude', 'latitude',
                     'amenities', 'name', 'neighborhood_overview', 'cleaned_neighborhood_overview']
     
     # Categorical columns for one-hot encoding
@@ -181,7 +190,7 @@ def prepare_features(df):
                          'review_scores_communication', 'review_scores_location',
                          'review_scores_value', 'calculated_host_listings_count',
                          'reviews_per_month', 'minimum_monthly_revenue',
-                         'maximum_monthly_revenue']
+                         'maximum_monthly_revenue', 'revenue_per_booking', 'distance_from_center']
     
     # Add availability ratios and monthly revenue columns
     for days in [30, 60, 90, 365]:
@@ -291,16 +300,11 @@ def evaluate_models_and_create_submissions(models, X_train, y_train, X_test, tes
     results = {}
     best_params = {}
     
-    # Split training data for evaluation
-    X_train_split, X_val, y_train_split, y_val = train_test_split(
-        X_train, y_train, test_size=0.2, random_state=42
-    )
-    
     for name, model in models.items():
         print(f"\nTraining {name} with RandomizedSearchCV...")
         
-        # Fit model with randomized search
-        model.fit(X_train_split, y_train_split)
+        # Fit model with randomized search on the full training data
+        model.fit(X_train, y_train)
         
         # Store best parameters
         best_params[name] = model.best_params_
@@ -308,29 +312,26 @@ def evaluate_models_and_create_submissions(models, X_train, y_train, X_test, tes
         for param, value in model.best_params_.items():
             print(f"{param}: {value}")
         
-        # Make predictions using best model
-        train_pred = model.predict(X_train_split)
-        val_pred = model.predict(X_val)
+        # Evaluate model on the training data
+        train_pred = model.predict(X_train)
         
         # Calculate metrics
-        train_rmse = np.sqrt(mean_squared_error(y_train_split, train_pred))
-        val_rmse = np.sqrt(mean_squared_error(y_val, val_pred))
-        train_r2 = r2_score(y_train_split, train_pred)
-        val_r2 = r2_score(y_val, val_pred)
+        train_rmse = np.sqrt(mean_squared_error(y_train, train_pred))
+        train_mse = mean_squared_error(y_train, train_pred)
+        train_r2 = r2_score(y_train, train_pred)
         
         # Store results
         results[name] = {
             'Train RMSE': train_rmse,
-            'Validation RMSE': val_rmse,
+            'Train MSE': train_mse,
             'Train R2': train_r2,
-            'Validation R2': val_r2,
             'Best CV Score': -model.best_score_  # Convert back from negative RMSE
         }
         
         # Create submission file
         print(f"Creating submission for {name}...")
         
-        # Retrain best model on full training data
+        # Retrain best model on full training data (optional if model.best_estimator_ is already trained)
         model.best_estimator_.fit(X_train, y_train)
         
         # Predict on test data
@@ -347,52 +348,6 @@ def evaluate_models_and_create_submissions(models, X_train, y_train, X_test, tes
         print(f"Saved submission_{name.lower()}_tuned.csv")
     
     return results, best_params
-
-def analyze_xgboost_feature_importance(model, X_train):
-    """
-    Analyze and print feature importance from XGBoost, adjusted for transformed feature names.
-    """
-    print("\nAnalyzing XGBoost feature importance...")
-    
-    # If the model is inside a Pipeline, get the actual model (XGBRegressor or XGBClassifier)
-    if hasattr(model, 'named_steps'):
-        model = model.named_steps['regressor']  # Change 'regressor' to the name you used in your pipeline
-    
-    if hasattr(model, 'feature_importances_'):
-        importances = model.feature_importances_
-        
-        # Handle transformed feature names
-        if hasattr(model, 'get_booster'):
-            feature_names = X_train.columns  # If no transformation, use original column names
-        else:
-            # If using a pipeline with preprocessing (e.g., OneHotEncoder or ColumnTransformer), extract feature names
-            feature_names = X_train.columns.tolist()
-
-            if hasattr(model, 'named_steps'):
-                preprocessor = model.named_steps.get('preprocessor', None)
-                if preprocessor:
-                    # Extract feature names from transformers like OneHotEncoder or ColumnTransformer
-                    try:
-                        # If a ColumnTransformer is used, get the feature names after encoding
-                        feature_names = preprocessor.get_feature_names_out()
-                    except AttributeError:
-                        pass  # If no feature names could be extracted, fallback to the original ones
-        
-        # Ensure the length of feature names matches the importances
-        if len(importances) == len(feature_names):
-            importance_df = pd.DataFrame({
-                'Feature': feature_names,
-                'Importance': importances
-            }).sort_values(by='Importance', ascending=False)
-
-            print("\nTop 10 Important Features:")
-            print(importance_df.head(10))
-        else:
-            print(f"Feature names length ({len(feature_names)}) does not match importances length ({len(importances)})")
-    else:
-        print("Feature importances are not available for this model.")
-
-
 
 def main(selected_model=None):
     # Load data
@@ -418,7 +373,7 @@ def main(selected_model=None):
     train_df, numerical_features, categorical_features = prepare_features(train_df)
     test_df, _, _ = prepare_features(test_df)
     
-    train_df.to_csv('preprocessed.csv')
+    # train_df.to_csv('preprocessed.csv')
     # Split features and target
     X_train = train_df.drop('monthly_revenue', axis=1)
     y_train = train_df['monthly_revenue']
@@ -450,9 +405,6 @@ def main(selected_model=None):
         print("\nBest Parameters:")
         for param, value in best_params[model_name].items():
             print(f"{param}: {value}")
-    
-    if 'XGBoost' in models:
-        analyze_xgboost_feature_importance(models['XGBoost'].best_estimator_, X_train)
 
 
 if __name__ == "__main__":
