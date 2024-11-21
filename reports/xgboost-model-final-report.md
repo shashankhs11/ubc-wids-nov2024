@@ -1,3 +1,8 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
 # XGBoost Regression Model Report: Airbnb Monthly Revenue Prediction
 
 ## Model Overview
@@ -126,7 +131,7 @@ def load_and_preprocess_data(train_path, test_path):
     for df in [train_df, test_df]:
         for col in ['host_response_rate', 'host_acceptance_rate']:
             if col in df.columns:
-                df[col] = df[col].str.replace('%', '').astype(float)  # Convert to numeric
+                df[col] = df[col].str.replace('%', '').astype(float)  
     
     return train_df, test_df
 
@@ -212,11 +217,15 @@ def process_neighborhood_overview(df, tfidf_vectorizer=None):
         text = re.sub(r'\s+', ' ', text).strip()
         return text
 
-    df['cleaned_neighborhood_overview'] = df['neighborhood_overview'].apply(clean_text)
-    df['cleaned_neighborhood_overview'].fillna('no description available', inplace=True)
+    df['cleaned_neighborhood_overview'] = df['neighborhood_overview'].apply(
+                                                                clean_text)
+    df['cleaned_neighborhood_overview'].fillna('no description available', 
+                                               inplace=True)
     
     if tfidf_vectorizer is None:
-        tfidf_vectorizer = TfidfVectorizer(max_features=100, stop_words='english', ngram_range=(1,5))
+        tfidf_vectorizer = TfidfVectorizer(max_features=100, 
+                                           stop_words='english', 
+                                           ngram_range=(1,5))
         tfidf_matrix = tfidf_vectorizer.fit_transform(df['cleaned_neighborhood_overview'])
     else:
         tfidf_matrix = tfidf_vectorizer.transform(df['cleaned_neighborhood_overview'])
@@ -251,46 +260,58 @@ def create_feature_engineering(df):
         df[f'availability_ratio_{days}'] = df[f'availability_{days}'] / days
         # Compute monthly revenue
         factor = 30 if days != 30 else 1
-        df[f'monthly_revenue_{days}'] = df[f'availability_ratio_{days}'] * df['price'] * factor
+        df[f'monthly_revenue_{days}'] = df[f'availability_ratio_{days}'] * \
+            df['price'] * factor
 
     # Define a central point (e.g., city center)
     central_point = (49.2789, -123.1195)  # Example: Downtown, Vancouver, BC 
 
     # Calculate distance for each row
-    df['distance_from_center'] = df.apply(lambda row: haversine((row['latitude'], row['longitude']), central_point), axis=1)
+    df['distance_from_center'] = df.apply(lambda row: haversine((row['latitude'], 
+                                                                 row['longitude']), 
+                                                                central_point), 
+                                                                axis=1)
 
     
     return df
 
 def prepare_features(df):
     # Columns to drop
-    cols_to_drop = ['host_id', 'host_name', 'neighbourhood', 'longitude', 'latitude',
-                    'amenities', 'name', 'neighborhood_overview', 'cleaned_neighborhood_overview']
+    cols_to_drop = ['host_id', 'host_name', 'neighbourhood', 'longitude', 
+                    'latitude', 'amenities', 'name',
+                    'neighborhood_overview', 
+                    'cleaned_neighborhood_overview']
     
     # Categorical columns for one-hot encoding
     categorical_features = ['host_response_time', 'neighbourhood_cleansed', 
-                          'property_type', 'room_type', 'host_is_superhost', 'instant_bookable']
+                          'property_type', 'room_type', 'host_is_superhost', 
+                          'instant_bookable']
     
     # Numerical columns for scaling
     numerical_features = ['host_response_rate', 'host_acceptance_rate', 
                          'host_listings_count', 'host_total_listings_count',
-                         'accommodates', 'beds', 'minimum_nights', 'maximum_nights',
+                         'accommodates', 'beds', 'minimum_nights', 
+                         'maximum_nights', 'distance_from_center',
                          'minimum_nights_avg_ntm', 'maximum_nights_avg_ntm',
                          'number_of_reviews', 'number_of_reviews_ltm',
                          'review_scores_rating', 'review_scores_accuracy',
                          'review_scores_cleanliness', 'review_scores_checkin',
-                         'review_scores_communication', 'review_scores_location',
-                         'review_scores_value', 'calculated_host_listings_count',
+                         'review_scores_communication', 
+                         'review_scores_location',
+                         'review_scores_value', 
+                         'calculated_host_listings_count',
                          'reviews_per_month', 'minimum_monthly_revenue',
-                         'maximum_monthly_revenue', 'revenue_per_booking', 'distance_from_center']
+                         'maximum_monthly_revenue', 'revenue_per_booking']
     
     # Add availability ratios and monthly revenue columns
     for days in [30, 60, 90, 365]:
-        numerical_features.extend([f'availability_ratio_{days}', f'monthly_revenue_{days}'])
+        numerical_features.extend([f'availability_ratio_{days}', 
+                                   f'monthly_revenue_{days}'])
     
     # Add engineered features from name
     numerical_features.extend(['bedrooms', 'baths', 'overall_rating'])
-    categorical_features.extend(['is_bath_private', 'is_bath_shared', 'is_new_property'])
+    categorical_features.extend(['is_bath_private', 'is_bath_shared', 
+                                 'is_new_property'])
     
     # Add TF-IDF features
     tfidf_features = [col for col in df.columns if col.startswith('tfidf_')]
@@ -430,7 +451,8 @@ def evaluate_models_and_create_submissions(models, X_train, y_train, X_test, tes
         # Create submission file
         print(f"Creating submission for {name}...")
         
-        # Retrain best model on full training data (optional if model.best_estimator_ is already trained)
+        # Retrain best model on full training data (optional if 
+        # model.best_estimator_ is already trained)
         # model.best_estimator_.fit(X_train, y_train)
         
         # Predict on test data
@@ -488,38 +510,6 @@ def create_validation_pipeline(X, y, models, test_size=0.2):
     
     return validation_results, X_train, X_val, y_train, y_val
 
-# def create_additional_features(df):
-#     """
-#     Create additional engineered features
-#     """
-#     # Price-related features
-#     df['price_per_person'] = df['price'] / df['accommodates']
-#     df['price_per_bed'] = df['price'] / df['beds'].replace(0, 1)
-    
-#     # Review-related features
-#     df['reviews_per_month_normalized'] = df['reviews_per_month'] / df['host_listings_count']
-#     df['total_review_score'] = df[['review_scores_rating', 'review_scores_accuracy',
-#                                   'review_scores_cleanliness', 'review_scores_checkin',
-#                                   'review_scores_communication', 'review_scores_location',
-#                                   'review_scores_value']].mean(axis=1)
-    
-#     # Availability features
-#     df['availability_trend'] = (df['availability_365'] / 365) - (df['availability_30'] / 30)
-#     df['availability_volatility'] = df[[f'availability_{x}' for x in [30, 60, 90, 365]]].std(axis=1)
-    
-#     # Location features
-#     df['location_score_weighted'] = df['review_scores_location'] * df['review_scores_rating']
-    
-#     # Host features
-#     df['host_quality_score'] = df[['host_response_rate', 'host_acceptance_rate']].mean(axis=1)
-#     df['is_professional_host'] = (df['host_total_listings_count'] > 5).astype(int)
-    
-#     # Interaction features
-#     df['price_location_interaction'] = df['price'] * df['review_scores_location']
-#     df['price_cleanliness_interaction'] = df['price'] * df['review_scores_cleanliness']
-    
-#     return df
-
 def main(selected_model=None):
     # Load data
     train_df, test_df = load_and_preprocess_data('input/train.csv', 'input/test.csv')
@@ -544,11 +534,6 @@ def main(selected_model=None):
     train_df, numerical_features, categorical_features = prepare_features(train_df)
     test_df, _, _ = prepare_features(test_df)
     
-    # Add additional features
-    # print("Creating additional engineered features...")
-    # train_df = create_additional_features(train_df)
-    # test_df = create_additional_features(test_df)
-    
     # Prepare features
     X_train = train_df.drop('monthly_revenue', axis=1)
     y_train = train_df['monthly_revenue']
@@ -560,12 +545,14 @@ def main(selected_model=None):
     # Filter for selected model
     if selected_model:
         if isinstance(selected_model, list):
-            models = {name: model for name, model in models.items() if name in selected_model}
+            models = {name: model for name, model in models.items() 
+            if name in selected_model}
         else:
             models = {selected_model: models[selected_model]}
     
     # Perform validation
-    validation_results, X_train_split, X_val, y_train_split, y_val = create_validation_pipeline(
+    validation_results, X_train_split, X_val, y_train_split, y_val = \
+      create_validation_pipeline(
         X_train, y_train, models
     )
     
@@ -585,6 +572,5 @@ def main(selected_model=None):
 
 if __name__ == "__main__":
     main("XGBoost")
-
-
+```
 
