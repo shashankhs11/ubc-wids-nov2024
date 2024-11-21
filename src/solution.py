@@ -142,6 +142,8 @@ def create_feature_engineering(df):
     # Clean price column
     df['price'] = df['price'].str.replace('$', '').str.replace(',', '').astype(float)
     
+    df['instant_bookable'] = df['instant_bookable'].replace({'f': 0, 't': 1}).astype(int)
+
     # Create revenue features
     df['minimum_monthly_revenue'] = df['minimum_nights'] * df['price']
     df['maximum_monthly_revenue'] = df.apply(
@@ -177,7 +179,7 @@ def prepare_features(df):
     
     # Categorical columns for one-hot encoding
     categorical_features = ['host_response_time', 'neighbourhood_cleansed', 
-                          'property_type', 'room_type', 'host_is_superhost']
+                          'property_type', 'room_type', 'host_is_superhost', 'instant_bookable']
     
     # Numerical columns for scaling
     numerical_features = ['host_response_rate', 'host_acceptance_rate', 
@@ -393,106 +395,40 @@ def create_validation_pipeline(X, y, models, test_size=0.2):
             'Validation MSE': val_mse,
             'Validation R2': val_r2
         }
-        
-        # Plot actual vs predicted values
-        plt.figure(figsize=(10, 5))
-        
-        plt.subplot(1, 2, 1)
-        plt.scatter(y_train, train_pred, alpha=0.5)
-        plt.plot([y_train.min(), y_train.max()], [y_train.min(), y_train.max()], 'r--')
-        plt.xlabel('Actual Values')
-        plt.ylabel('Predicted Values')
-        plt.title(f'{name} - Training Set')
-        
-        plt.subplot(1, 2, 2)
-        plt.scatter(y_val, val_pred, alpha=0.5)
-        plt.plot([y_val.min(), y_val.max()], [y_val.min(), y_val.max()], 'r--')
-        plt.xlabel('Actual Values')
-        plt.ylabel('Predicted Values')
-        plt.title(f'{name} - Validation Set')
-        
-        plt.tight_layout()
-        plt.show()
-        
-        # Plot residuals
-        residuals = y_val - val_pred
-        plt.figure(figsize=(10, 5))
-        
-        plt.subplot(1, 2, 1)
-        plt.scatter(val_pred, residuals, alpha=0.5)
-        plt.axhline(y=0, color='r', linestyle='--')
-        plt.xlabel('Predicted Values')
-        plt.ylabel('Residuals')
-        plt.title(f'{name} - Residual Plot')
-        
-        plt.subplot(1, 2, 2)
-        plt.hist(residuals, bins=30)
-        plt.xlabel('Residual Value')
-        plt.ylabel('Frequency')
-        plt.title('Residual Distribution')
-        
-        plt.tight_layout()
-        plt.show()
     
     return validation_results, X_train, X_val, y_train, y_val
 
-def perform_feature_importance_analysis(model, X_train, feature_names):
-    """
-    Analyze feature importance for the model
-    """
-    if hasattr(model, 'feature_importances_'):
-        importances = model.feature_importances_
-    elif hasattr(model, 'coef_'):
-        importances = np.abs(model.coef_)
-    else:
-        return None
+# def create_additional_features(df):
+#     """
+#     Create additional engineered features
+#     """
+#     # Price-related features
+#     df['price_per_person'] = df['price'] / df['accommodates']
+#     df['price_per_bed'] = df['price'] / df['beds'].replace(0, 1)
     
-    feature_importance = pd.DataFrame({
-        'feature': feature_names,
-        'importance': importances
-    })
-    feature_importance = feature_importance.sort_values('importance', ascending=False)
+#     # Review-related features
+#     df['reviews_per_month_normalized'] = df['reviews_per_month'] / df['host_listings_count']
+#     df['total_review_score'] = df[['review_scores_rating', 'review_scores_accuracy',
+#                                   'review_scores_cleanliness', 'review_scores_checkin',
+#                                   'review_scores_communication', 'review_scores_location',
+#                                   'review_scores_value']].mean(axis=1)
     
-    # Plot feature importance
-    plt.figure(figsize=(12, 6))
-    sns.barplot(data=feature_importance.head(20), x='importance', y='feature')
-    plt.title('Top 20 Most Important Features')
-    plt.tight_layout()
-    plt.show()
+#     # Availability features
+#     df['availability_trend'] = (df['availability_365'] / 365) - (df['availability_30'] / 30)
+#     df['availability_volatility'] = df[[f'availability_{x}' for x in [30, 60, 90, 365]]].std(axis=1)
     
-    return feature_importance
-
-def create_additional_features(df):
-    """
-    Create additional engineered features
-    """
-    # Price-related features
-    df['price_per_person'] = df['price'] / df['accommodates']
-    df['price_per_bed'] = df['price'] / df['beds'].replace(0, 1)
+#     # Location features
+#     df['location_score_weighted'] = df['review_scores_location'] * df['review_scores_rating']
     
-    # Review-related features
-    df['reviews_per_month_normalized'] = df['reviews_per_month'] / df['host_listings_count']
-    df['total_review_score'] = df[['review_scores_rating', 'review_scores_accuracy',
-                                  'review_scores_cleanliness', 'review_scores_checkin',
-                                  'review_scores_communication', 'review_scores_location',
-                                  'review_scores_value']].mean(axis=1)
+#     # Host features
+#     df['host_quality_score'] = df[['host_response_rate', 'host_acceptance_rate']].mean(axis=1)
+#     df['is_professional_host'] = (df['host_total_listings_count'] > 5).astype(int)
     
-    # Availability features
-    df['availability_trend'] = (df['availability_365'] / 365) - (df['availability_30'] / 30)
-    df['availability_volatility'] = df[[f'availability_{x}' for x in [30, 60, 90, 365]]].std(axis=1)
+#     # Interaction features
+#     df['price_location_interaction'] = df['price'] * df['review_scores_location']
+#     df['price_cleanliness_interaction'] = df['price'] * df['review_scores_cleanliness']
     
-    # Location features
-    df['location_score_weighted'] = df['review_scores_location'] * df['review_scores_rating']
-    
-    # Host features
-    df['host_quality_score'] = df[['host_response_rate', 'host_acceptance_rate']].mean(axis=1)
-    df['is_professional_host'] = (df['host_total_listings_count'] > 5).astype(int)
-    
-    # Interaction features
-    df['price_location_interaction'] = df['price'] * df['review_scores_location']
-    df['price_cleanliness_interaction'] = df['price'] * df['review_scores_cleanliness']
-    
-    return df
+#     return df
 
 def main(selected_model=None):
     # Load data
@@ -519,9 +455,9 @@ def main(selected_model=None):
     test_df, _, _ = prepare_features(test_df)
     
     # Add additional features
-    print("Creating additional engineered features...")
-    train_df = create_additional_features(train_df)
-    test_df = create_additional_features(test_df)
+    # print("Creating additional engineered features...")
+    # train_df = create_additional_features(train_df)
+    # test_df = create_additional_features(test_df)
     
     # Prepare features
     X_train = train_df.drop('monthly_revenue', axis=1)
@@ -549,17 +485,6 @@ def main(selected_model=None):
         print(f"\n{model_name}:")
         for metric_name, value in metrics.items():
             print(f"{metric_name}: {value:.4f}")
-        
-        # # Analyze feature importance
-        # if model_name in models:
-        #     feature_importance = perform_feature_importance_analysis(
-        #         models[model_name].named_steps['regressor'],
-        #         X_train_split,
-        #         X_train.columns
-        #     )
-        #     if feature_importance is not None:
-        #         print("\nTop 10 Most Important Features:")
-        #         print(feature_importance.head(10))
     
     # Create final predictions and submission files
     results, best_params = evaluate_models_and_create_submissions(
@@ -567,40 +492,6 @@ def main(selected_model=None):
     )
     
     return validation_results, results
-
-    # # train_df.to_csv('preprocessed.csv')
-    # # Split features and target
-    # X_train = train_df.drop('monthly_revenue', axis=1)
-    # y_train = train_df['monthly_revenue']
-    # X_test = test_df
-    
-    # print("Creating model pipelines with RandomizedSearchCV...")
-    # models = create_model_pipeline(numerical_features, categorical_features)
-    
-    # # Filter for the selected model
-    # if selected_model:
-    #     if isinstance(selected_model, list):  # If multiple models are provided
-    #         models = {name: model for name, model in models.items() if name in selected_model}
-    #     else:
-    #         models = {selected_model: models[selected_model]}
-
-    
-    # # Evaluate models and create submissions
-    # results, best_params = evaluate_models_and_create_submissions(
-    #     models, X_train, y_train, X_test, test_df
-    # )
-    
-    # # Print results
-    # print("\nFinal Results:")
-    # for model_name, metrics in results.items():
-    #     print(f"\n{model_name}:")
-    #     for metric_name, value in metrics.items():
-    #         print(f"{metric_name}: {value:.4f}")
-        
-    #     print("\nBest Parameters:")
-    #     for param, value in best_params[model_name].items():
-    #         print(f"{param}: {value}")
-
 
 if __name__ == "__main__":
     main("XGBoost")
